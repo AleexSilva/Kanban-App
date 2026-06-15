@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,14 +13,18 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import { createId, moveCard, type BoardData } from "@/lib/kanban";
+import { getBoard, saveBoard } from "@/lib/api";
 
 type KanbanBoardProps = {
   onLogout?: () => void;
 };
 
+type Status = "loading" | "ready" | "error";
+
 export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
-  const [board, setBoard] = useState<BoardData>(() => initialData);
+  const [board, setBoard] = useState<BoardData | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -29,7 +33,28 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  useEffect(() => {
+    getBoard()
+      .then((data) => {
+        setBoard(data);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("error"));
+  }, []);
+
+  const persist = (next: BoardData) => {
+    void saveBoard(next).catch(() => {});
+  };
+
+  // Optimistic local update that also persists the resulting board.
+  const mutate = (producer: (prev: BoardData) => BoardData) => {
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const next = producer(prev);
+      persist(next);
+      return next;
+    });
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -43,24 +68,37 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
       return;
     }
 
-    setBoard((prev) => ({
+    mutate((prev) => ({
       ...prev,
       columns: moveCard(prev.columns, active.id as string, over.id as string),
     }));
   };
 
+  // Rename updates locally on each keystroke for smooth typing; it persists on
+  // blur (handleRenameCommit) to avoid a request per keystroke.
   const handleRenameColumn = (columnId: string, title: string) => {
-    setBoard((prev) => ({
-      ...prev,
-      columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
-      ),
-    }));
+    setBoard((prev) =>
+      prev
+        ? {
+            ...prev,
+            columns: prev.columns.map((column) =>
+              column.id === columnId ? { ...column, title } : column
+            ),
+          }
+        : prev
+    );
+  };
+
+  const handleRenameCommit = () => {
+    setBoard((prev) => {
+      if (prev) persist(prev);
+      return prev;
+    });
   };
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
     const id = createId("card");
-    setBoard((prev) => ({
+    mutate((prev) => ({
       ...prev,
       cards: {
         ...prev.cards,
@@ -75,25 +113,33 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
-    setBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
-    });
+    mutate((prev) => ({
+      ...prev,
+      cards: Object.fromEntries(
+        Object.entries(prev.cards).filter(([id]) => id !== cardId)
+      ),
+      columns: prev.columns.map((column) =>
+        column.id === columnId
+          ? {
+              ...column,
+              cardIds: column.cardIds.filter((id) => id !== cardId),
+            }
+          : column
+      ),
+    }));
   };
 
-  const activeCard = activeCardId ? cardsById[activeCardId] : null;
+  const handleEditCard = (cardId: string, title: string, details: string) => {
+    mutate((prev) => ({
+      ...prev,
+      cards: {
+        ...prev.cards,
+        [cardId]: { ...prev.cards[cardId], title, details },
+      },
+    }));
+  };
+
+  const activeCard = activeCardId && board ? board.cards[activeCardId] : null;
 
   return (
     <div className="relative overflow-hidden">
@@ -136,7 +182,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            {board.columns.map((column) => (
+            {board?.columns.map((column) => (
               <div
                 key={column.id}
                 className="flex items-center gap-2 rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--navy-dark)]"
@@ -148,32 +194,45 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
           </div>
         </header>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <section className="grid gap-6 lg:grid-cols-5">
-            {board.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds.map((cardId) => board.cards[cardId])}
-                onRename={handleRenameColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-              />
-            ))}
-          </section>
-          <DragOverlay>
-            {activeCard ? (
-              <div className="w-[260px]">
-                <KanbanCardPreview card={activeCard} />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        {status === "loading" ? (
+          <p className="text-sm text-[var(--gray-text)]">Loading board...</p>
+        ) : null}
+        {status === "error" ? (
+          <p role="alert" className="text-sm text-[var(--secondary-purple)]">
+            Could not load the board.
+          </p>
+        ) : null}
+
+        {status === "ready" && board ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <section className="grid gap-6 lg:grid-cols-5">
+              {board.columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  onRename={handleRenameColumn}
+                  onRenameCommit={handleRenameCommit}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                  onEditCard={handleEditCard}
+                />
+              ))}
+            </section>
+            <DragOverlay>
+              {activeCard ? (
+                <div className="w-[260px]">
+                  <KanbanCardPreview card={activeCard} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        ) : null}
       </main>
     </div>
   );

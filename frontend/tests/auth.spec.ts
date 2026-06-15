@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedBoard } from "./seed";
 
 // The backend is not running in the frontend-only e2e setup, so the /api/* auth
 // routes are stubbed at the browser level to exercise the login/logout UI flows.
@@ -21,6 +22,9 @@ test("logs in with valid credentials and shows the board", async ({ page }) => {
   );
   await page.route("**/api/login", (route) =>
     route.fulfill({ status: 200, json: { username: "user" } })
+  );
+  await page.route("**/api/board", (route) =>
+    route.fulfill({ status: 200, json: seedBoard() })
   );
 
   await page.goto("/");
@@ -58,6 +62,9 @@ test("logs out and returns to the login form", async ({ page }) => {
   );
   await page.route("**/api/logout", (route) =>
     route.fulfill({ status: 200, json: { status: "ok" } })
+  );
+  await page.route("**/api/board", (route) =>
+    route.fulfill({ status: 200, json: seedBoard() })
   );
 
   await page.goto("/");

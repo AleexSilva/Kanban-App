@@ -33,6 +33,9 @@ describe("AppGate", () => {
       if (url.endsWith("/api/login")) {
         return jsonResponse(200, { username: "user" });
       }
+      if (url.endsWith("/api/board")) {
+        return jsonResponse(200, { columns: [], cards: {} });
+      }
       return jsonResponse(404, {});
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -81,6 +84,9 @@ describe("AppGate", () => {
       }
       if (url.endsWith("/api/logout")) {
         return jsonResponse(200, { status: "ok" });
+      }
+      if (url.endsWith("/api/board")) {
+        return jsonResponse(200, { columns: [], cards: {} });
       }
       return jsonResponse(404, {});
     });

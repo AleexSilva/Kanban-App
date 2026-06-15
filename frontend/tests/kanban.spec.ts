@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { mockBoardApi } from "./seed";
 
-// The board is gated behind auth (Part 4). The backend is not running in the
-// frontend-only e2e setup, so stub /api/me to an authenticated session.
+// The backend is not running in the frontend-only e2e setup, so stub an
+// authenticated session and a stateful in-memory board API (see ./seed).
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/me", (route) =>
-    route.fulfill({ status: 200, json: { username: "user" } })
-  );
+  await mockBoardApi(page);
 });
 
 test("loads the kanban board", async ({ page }) => {
@@ -46,4 +45,17 @@ test("moves a card between columns", async ({ page }) => {
   );
   await page.mouse.up();
   await expect(targetColumn.getByTestId("card-card-1")).toBeVisible();
+});
+
+test("edits a card and the change persists across reload", async ({ page }) => {
+  await page.goto("/");
+  const card = page.getByTestId("card-card-1");
+  await card.getByRole("button", { name: /edit align roadmap themes/i }).click();
+  await card.getByLabel("Card title").fill("Renamed via e2e");
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Renamed via e2e")).toBeVisible();
+
+  // The stateful mock persists the PUT, so the edit survives a reload.
+  await page.reload();
+  await expect(page.getByText("Renamed via e2e")).toBeVisible();
 });
