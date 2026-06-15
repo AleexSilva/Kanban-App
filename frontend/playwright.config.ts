@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// When running in the e2e Docker container (Dockerfile.e2e), the system apt
+// Chromium is used instead of the Playwright CDN binary, which cannot be
+// downloaded in this environment due to proxy TLS interception.
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+
 export default defineConfig({
   testDir: "./tests",
   timeout: 60_000,
@@ -19,7 +24,16 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(executablePath && {
+          launchOptions: {
+            executablePath,
+            // Required when running as root inside a Docker container.
+            args: ["--no-sandbox"],
+          },
+        }),
+      },
     },
   ],
 });

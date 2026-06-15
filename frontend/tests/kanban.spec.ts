@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
 
+// The board is gated behind auth (Part 4). The backend is not running in the
+// frontend-only e2e setup, so stub /api/me to an authenticated session.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ status: 200, json: { username: "user" } })
+  );
+});
+
 test("loads the kanban board", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();

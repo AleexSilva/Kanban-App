@@ -1,0 +1,19 @@
+FROM node:24-slim
+
+# Install Chromium from Debian/Ubuntu apt repos (avoids the Playwright CDN,
+# which is unreachable in this environment due to proxy TLS interception).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends chromium && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# Tell Playwright to skip its own browser download and use the system Chromium.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+
+CMD ["npm", "run", "test:e2e"]
