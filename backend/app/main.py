@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.ai import ask
+from app.ai import chat_with_board
 from app.db import get_board, get_connection, get_or_create_user, init_db, save_board
 from app.models import BoardData
 
@@ -98,10 +98,22 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/chat")
-def chat(body: ChatRequest, username: str = Depends(require_user)):
+def chat(body: ChatRequest, username: str = Depends(require_user), conn=Depends(get_db)):
+    user_id = get_or_create_user(conn, username)
+    board = get_board(conn, user_id)
     messages = [m.model_dump() for m in body.history] + [{"role": "user", "content": body.message}]
-    reply = ask(messages)
-    return {"reply": reply}
+    result = chat_with_board(messages, board)
+
+    board_updated = False
+    if result.get("board"):
+        try:
+            validated = BoardData.model_validate(result["board"])
+            save_board(conn, user_id, validated.model_dump())
+            board_updated = True
+        except Exception:
+            pass
+
+    return {"reply": result.get("reply", ""), "board_updated": board_updated}
 
 
 # Directory of static files served at /. Defaults to the placeholder page; in the
