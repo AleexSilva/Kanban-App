@@ -36,6 +36,9 @@ test("chat reply appears in sidebar and board updates when board_updated is true
   await page.goto("/");
   await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
 
+  // The chat is collapsed by default; open it from the floating button.
+  await page.getByRole("button", { name: "Open AI chat" }).click();
+
   // Send a message via the chat sidebar.
   await page.getByLabel("Chat input").fill("Add a card please");
   await page.getByRole("button", { name: /send/i }).click();

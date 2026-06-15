@@ -20,16 +20,36 @@ describe("ChatSidebar", () => {
     sendChatMock.mockReset();
   });
 
-  it("renders the empty state prompt", () => {
+  // The chat is collapsed by default behind a floating button; open it first.
+  const openChat = async () => {
     render(<ChatSidebar onBoardRefresh={onBoardRefresh} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open AI chat" }));
+  };
+
+  it("is collapsed by default and shows only the toggle button", () => {
+    render(<ChatSidebar onBoardRefresh={onBoardRefresh} />);
+    expect(
+      screen.getByRole("button", { name: "Open AI chat" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Chat input")).not.toBeInTheDocument();
+  });
+
+  it("opens the panel and shows the empty state prompt", async () => {
+    await openChat();
     expect(screen.getByText(/ask me to add/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Chat input")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /send/i })).toBeInTheDocument();
   });
 
+  it("closes the panel when the close button is clicked", async () => {
+    await openChat();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByLabelText("Chat input")).not.toBeInTheDocument();
+  });
+
   it("sends a message and displays the assistant reply", async () => {
     sendChatMock.mockResolvedValue({ reply: "The answer is 4.", board_updated: false });
-    render(<ChatSidebar onBoardRefresh={onBoardRefresh} />);
+    await openChat();
 
     await userEvent.type(screen.getByLabelText("Chat input"), "What is 2+2?");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
@@ -41,7 +61,7 @@ describe("ChatSidebar", () => {
 
   it("calls onBoardRefresh when board_updated is true", async () => {
     sendChatMock.mockResolvedValue({ reply: "Done!", board_updated: true });
-    render(<ChatSidebar onBoardRefresh={onBoardRefresh} />);
+    await openChat();
 
     await userEvent.type(screen.getByLabelText("Chat input"), "Add a card");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
@@ -51,7 +71,7 @@ describe("ChatSidebar", () => {
 
   it("shows an error when the request fails", async () => {
     sendChatMock.mockRejectedValue(new Error("Network error"));
-    render(<ChatSidebar onBoardRefresh={onBoardRefresh} />);
+    await openChat();
 
     await userEvent.type(screen.getByLabelText("Chat input"), "Hello");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
