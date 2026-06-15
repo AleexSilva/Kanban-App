@@ -4,8 +4,23 @@ import os
 import httpx
 from openai import OpenAI
 
-MODEL = "openai/gpt-oss-120b"
+# Models are tried in order; if one is unavailable, the next is used. Override
+# with the OPENROUTER_MODELS env var (comma-separated). The primary stays
+# openai/gpt-oss-120b per the project spec.
+DEFAULT_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct",
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openai/gpt-oss-20b:free",
+]
 BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def _models() -> list[str]:
+    raw = os.environ.get("OPENROUTER_MODELS")
+    if raw:
+        return [model.strip() for model in raw.split(",") if model.strip()]
+    return DEFAULT_MODELS
 
 _BOARD_SCHEMA = """\
 {
@@ -34,8 +49,20 @@ def _client() -> OpenAI:
     )
 
 
+def _complete(**kwargs):
+    """Call the chat completions API, falling back through _models() in order."""
+    client = _client()
+    last_error: Exception | None = None
+    for model in _models():
+        try:
+            return client.chat.completions.create(model=model, **kwargs)
+        except Exception as error:  # model unavailable / errored: try the next
+            last_error = error
+    raise RuntimeError(f"All models failed; last error: {last_error}") from last_error
+
+
 def ask(messages: list[dict]) -> str:
-    response = _client().chat.completions.create(model=MODEL, messages=messages)
+    response = _complete(messages=messages)
     return response.choices[0].message.content
 
 
@@ -43,8 +70,7 @@ def chat_with_board(messages: list[dict], board: dict) -> dict:
     """Returns {"reply": str, "board": dict | None}."""
     system = f"{SYSTEM_PROMPT}\n\nCurrent board:\n{json.dumps(board, indent=2)}"
     full_messages = [{"role": "system", "content": system}] + messages
-    response = _client().chat.completions.create(
-        model=MODEL,
+    response = _complete(
         messages=full_messages,
         response_format={"type": "json_object"},
     )
