@@ -1,20 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
-  closestCorners,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { createId, moveCard, type BoardData } from "@/lib/kanban";
 import { getBoard, saveBoard } from "@/lib/api";
+
+// pointerWithin finds the droppable whose bounds contain the pointer — exact and
+// column-aware. rectIntersection handles drops in gaps or column headers where
+// the pointer falls outside all registered droppables.
+const collisionDetection: CollisionDetection = (args) => {
+  const pw = pointerWithin(args);
+  return pw.length > 0 ? pw : rectIntersection(args);
+};
 
 type KanbanBoardProps = {
   onLogout?: () => void;
@@ -27,6 +38,9 @@ export const KanbanBoard = ({ onLogout, refreshTrigger }: KanbanBoardProps = {})
   const [board, setBoard] = useState<BoardData | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  // Tracks the last column seen during onDragOver so handleDragEnd has a
+  // fallback when the pointer leaves all droppable bounds just before mouseup.
+  const overColumnIdRef = useRef<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -59,19 +73,27 @@ export const KanbanBoard = ({ onLogout, refreshTrigger }: KanbanBoardProps = {})
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
+    overColumnIdRef.current = null;
+  };
+
+  const handleDragOver = ({ over }: DragOverEvent) => {
+    if (!over || !board) return;
+    const id = over.id as string;
+    const isColumn = board.columns.some((col) => col.id === id);
+    overColumnIdRef.current = isColumn
+      ? id
+      : (board.columns.find((col) => col.cardIds.includes(id))?.id ?? null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
-
-    if (!over || active.id === over.id) {
-      return;
-    }
-
+    const overId = (over?.id as string | undefined) ?? overColumnIdRef.current;
+    overColumnIdRef.current = null;
+    if (!overId || active.id === overId) return;
     mutate((prev) => ({
       ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
+      columns: moveCard(prev.columns, active.id as string, overId),
     }));
   };
 
@@ -207,8 +229,9 @@ export const KanbanBoard = ({ onLogout, refreshTrigger }: KanbanBoardProps = {})
         {status === "ready" && board ? (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
             <section className="grid gap-6 lg:grid-cols-5">

@@ -77,6 +77,8 @@ test("reorders a card to the bottom empty space of its own column", async ({
   page,
 }) => {
   await page.goto("/");
+  // Wait for the board to finish loading before reading DOM state.
+  await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
   // Done has card-7 then card-8. Drag card-7 to the bottom empty area.
   expect(await cardOrder(page, "column-col-done")).toEqual([
     "card-card-7",
