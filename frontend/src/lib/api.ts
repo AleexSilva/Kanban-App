@@ -18,3 +18,21 @@ export async function saveBoard(board: BoardData): Promise<void> {
     throw new Error("Failed to save board.");
   }
 }
+
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatResponse = { reply: string; board_updated: boolean };
+
+export async function sendChat(
+  message: string,
+  history: ChatMessage[]
+): Promise<ChatResponse> {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history }),
+  });
+  if (!response.ok) {
+    throw new Error("Chat request failed.");
+  }
+  return (await response.json()) as ChatResponse;
+}

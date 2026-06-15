@@ -18,11 +18,12 @@ import { getBoard, saveBoard } from "@/lib/api";
 
 type KanbanBoardProps = {
   onLogout?: () => void;
+  refreshTrigger?: number;
 };
 
 type Status = "loading" | "ready" | "error";
 
-export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
+export const KanbanBoard = ({ onLogout, refreshTrigger }: KanbanBoardProps = {}) => {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
-  }, []);
+  }, [refreshTrigger]);
 
   const persist = (next: BoardData) => {
     void saveBoard(next).catch(() => {});
