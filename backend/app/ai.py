@@ -74,4 +74,7 @@ def chat_with_board(messages: list[dict], board: dict) -> dict:
         messages=full_messages,
         response_format={"type": "json_object"},
     )
-    return json.loads(response.choices[0].message.content)
+    try:
+        return json.loads(response.choices[0].message.content)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"AI returned non-JSON response: {exc}") from exc

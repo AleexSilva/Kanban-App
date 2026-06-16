@@ -1,16 +1,24 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.ai import chat_with_board
 from app.db import get_board, get_connection, get_or_create_user, init_db, save_board
 from app.models import BoardData
 
-app = FastAPI(title="PM MVP")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="PM MVP", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET", "dev-secret-change-me"),
@@ -61,7 +69,6 @@ def require_user(request: Request) -> str:
 
 
 def get_db():
-    init_db()
     conn = get_connection()
     try:
         yield conn
@@ -110,7 +117,7 @@ def chat(body: ChatRequest, username: str = Depends(require_user), conn=Depends(
             validated = BoardData.model_validate(result["board"])
             save_board(conn, user_id, validated.model_dump())
             board_updated = True
-        except Exception:
+        except ValidationError:
             pass
 
     return {"reply": result.get("reply", ""), "board_updated": board_updated}
