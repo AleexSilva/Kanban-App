@@ -109,7 +109,10 @@ def chat(body: ChatRequest, username: str = Depends(require_user), conn=Depends(
     user_id = get_or_create_user(conn, username)
     board = get_board(conn, user_id)
     messages = [m.model_dump() for m in body.history] + [{"role": "user", "content": body.message}]
-    result = chat_with_board(messages, board)
+    try:
+        result = chat_with_board(messages, board)
+    except ValueError:
+        raise HTTPException(status_code=502, detail="AI returned an unparseable response")
 
     board_updated = False
     if result.get("board"):

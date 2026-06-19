@@ -1,15 +1,15 @@
-import os
-
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db import get_board, get_connection, get_or_create_user
 from app.main import app
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
-    return TestClient(app)
+    with TestClient(app) as c:
+        yield c
 
 
 def login(client: TestClient) -> None:
@@ -21,11 +21,10 @@ def test_board_requires_authentication(client):
     assert client.put("/api/board", json={"columns": [], "cards": {}}).status_code == 401
 
 
-def test_db_file_created_on_first_access(client, tmp_path):
+def test_db_file_created_on_startup(client, tmp_path):
+    # init_db() now runs during app lifespan startup, so the file exists
+    # before any request is made.
     db_path = tmp_path / "test.db"
-    assert not db_path.exists()
-    login(client)
-    client.get("/api/board")
     assert db_path.exists()
 
 
@@ -62,8 +61,8 @@ def test_put_board_rejects_malformed_payload(client):
     assert client.put("/api/board", json=bad_board).status_code == 422
 
 
-def test_boards_are_scoped_per_user(client, monkeypatch):
-    # User "user" saves a custom board.
+def test_boards_are_scoped_per_user(client):
+    # User "user" saves a custom board via the API.
     login(client)
     custom = {
         "columns": [{"id": "col-a", "title": "A", "cardIds": []}],
@@ -71,10 +70,30 @@ def test_boards_are_scoped_per_user(client, monkeypatch):
     }
     client.put("/api/board", json=custom)
 
-    # A different username gets its own freshly seeded board, not "user"'s.
-    monkeypatch.setattr("app.main.USERNAME", "other")
-    monkeypatch.setattr("app.main.PASSWORD", "pw")
-    other = TestClient(app)
-    other.post("/api/login", json={"username": "other", "password": "pw"})
-    other_board = other.get("/api/board").json()
+    # Verify isolation at the DB layer: a different user gets their own seeded
+    # board, not "user"'s custom one. Going through the DB layer avoids patching
+    # hardcoded credentials just to exercise data isolation.
+    conn = get_connection()
+    try:
+        other_id = get_or_create_user(conn, "other")
+        other_board = get_board(conn, other_id)
+        conn.commit()
+    finally:
+        conn.close()
+
     assert len(other_board["columns"]) == 5
+    assert len(other_board["cards"]) == 8
+
+
+def test_get_or_create_user_is_idempotent(client):
+    # Calling get_or_create_user twice for the same username must return the
+    # same id and not raise an IntegrityError (INSERT OR IGNORE is atomic).
+    conn = get_connection()
+    try:
+        id1 = get_or_create_user(conn, "alice")
+        id2 = get_or_create_user(conn, "alice")
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert id1 == id2

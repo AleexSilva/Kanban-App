@@ -40,13 +40,21 @@ Board schema:
 {_BOARD_SCHEMA}"""
 
 
+# SSL_VERIFY=false works around a local proxy's self-signed certificate.
+_ssl_verify = os.environ.get("SSL_VERIFY", "true").lower() != "false"
+
+_openai_client: OpenAI | None = None
+
+
 def _client() -> OpenAI:
-    # verify=False works around the local proxy's self-signed certificate.
-    return OpenAI(
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        base_url=BASE_URL,
-        http_client=httpx.Client(verify=False),
-    )
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(
+            api_key=os.environ["OPENROUTER_API_KEY"],
+            base_url=BASE_URL,
+            http_client=httpx.Client(verify=_ssl_verify, timeout=30.0),
+        )
+    return _openai_client
 
 
 def _complete(**kwargs):
@@ -62,6 +70,7 @@ def _complete(**kwargs):
 
 
 def ask(messages: list[dict]) -> str:
+    """Thin wrapper around _complete; kept as a test helper for the fallback/model chain."""
     response = _complete(messages=messages)
     return response.choices[0].message.content
 

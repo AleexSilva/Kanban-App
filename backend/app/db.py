@@ -38,15 +38,10 @@ def init_db() -> None:
 
 
 def get_or_create_user(conn: sqlite3.Connection, username: str) -> int:
-    row = conn.execute(
+    conn.execute("INSERT OR IGNORE INTO users (username) VALUES (?)", (username,))
+    return conn.execute(
         "SELECT id FROM users WHERE username = ?", (username,)
-    ).fetchone()
-    if row:
-        return row["id"]
-    cursor = conn.execute(
-        "INSERT INTO users (username) VALUES (?)", (username,)
-    )
-    return cursor.lastrowid
+    ).fetchone()["id"]
 
 
 def get_board(conn: sqlite3.Connection, user_id: int) -> dict:

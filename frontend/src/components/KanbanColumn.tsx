@@ -56,7 +56,7 @@ export const KanbanColumn = ({
         <SortableContext items={column.cardIds} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
             <KanbanCard
-              key={card.id}
+              key={`${card.id}:${card.title}:${card.details}`}
               card={card}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={onEditCard}

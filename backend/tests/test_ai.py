@@ -1,5 +1,6 @@
 import os
 
+import httpx
 import pytest
 
 from app import ai
@@ -60,6 +61,23 @@ def test_raises_when_all_models_fail(monkeypatch):
     with pytest.raises(RuntimeError):
         ai.ask([{"role": "user", "content": "2+2?"}])
     assert calls == ["model-a", "model-b"]
+
+
+def test_chat_with_board_raises_on_malformed_json(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODELS", "model-a")
+    client, _ = _fake_client({"model-a": "not json at all"})
+    monkeypatch.setattr(ai, "_client", lambda: client)
+    with pytest.raises(ValueError, match="AI returned non-JSON response"):
+        ai.chat_with_board([{"role": "user", "content": "hi"}], {})
+
+
+def test_complete_propagates_timeout_as_runtime_error(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODELS", "model-a")
+    client, calls = _fake_client({"model-a": httpx.ReadTimeout("timed out")})
+    monkeypatch.setattr(ai, "_client", lambda: client)
+    with pytest.raises(RuntimeError):
+        ai.ask([{"role": "user", "content": "hi"}])
+    assert calls == ["model-a"]
 
 
 @pytest.mark.skipif(

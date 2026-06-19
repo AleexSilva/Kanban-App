@@ -9,7 +9,8 @@ from app.main import app
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
-    return TestClient(app)
+    with TestClient(app) as c:
+        yield c
 
 
 def login(client: TestClient) -> None:
@@ -45,6 +46,13 @@ def test_chat_with_board_update(client):
     board = client.get("/api/board").json()
     assert board["columns"][0]["title"] == "To Do"
     assert "card-1" in board["cards"]
+
+
+def test_chat_returns_502_on_malformed_ai_response(client):
+    login(client)
+    with patch("app.main.chat_with_board", side_effect=ValueError("AI returned non-JSON response")):
+        response = client.post("/api/chat", json={"message": "hi", "history": []})
+    assert response.status_code == 502
 
 
 def test_chat_rejects_malformed_board(client):

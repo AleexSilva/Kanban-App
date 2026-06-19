@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -112,12 +112,9 @@ export const KanbanBoard = ({ onLogout, refreshTrigger }: KanbanBoardProps = {})
     );
   };
 
-  const handleRenameCommit = () => {
-    setBoard((prev) => {
-      if (prev) persist(prev);
-      return prev;
-    });
-  };
+  const handleRenameCommit = useCallback(() => {
+    if (board) persist(board);
+  }, [board]);
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
     const id = createId("card");

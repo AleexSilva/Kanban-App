@@ -9,6 +9,7 @@ services:
       - .env
     environment:
       - DATABASE_PATH=/app/data/pm.db
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET must be set}
     volumes:
       - pmdata:/app/data
 

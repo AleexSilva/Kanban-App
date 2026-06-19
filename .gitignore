@@ -178,4 +178,5 @@ cython_debug/
 # Internal planning / agent docs - not published to GitHub
 AGENTS.md
 PLAN.md
+CLAUDE.md
 
